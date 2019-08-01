@@ -1,0 +1,6 @@
+*.pyc
+__pycache__
+*.vtu
+*.pvd
+*.h5
+*.xdmf
