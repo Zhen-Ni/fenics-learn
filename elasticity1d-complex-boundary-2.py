@@ -16,7 +16,7 @@ k=1e8
 
 
 # Create mesh and define function space
-mesh = BoxMesh(Point(0, 0, 0), Point(L, W, W), 15, 1, 1)
+mesh = BoxMesh(Point(0, 0, 0), Point(L, W, W), 60, 4, 4)
 V = VectorFunctionSpace(mesh, 'P', 3)
 
 def strain_normal(u):
@@ -45,10 +45,13 @@ u = TrialFunction(V)
 v = TestFunction(V)
 
 
+f = Constant((0, 0, -rho*g))
+T = Constant((0, 0, 0))
 
-ak = (np.dot(stress_normal(u,E,mu), strain_normal(v)) + 
+a = (np.dot(stress_normal(u,E,mu), strain_normal(v)) + 
      np.dot(stress_shear(u,E,mu), strain_shear(v)))*dx
-am = rho * inner(u,v) * dx
+L_ = dot(f, v)*dx + dot(T, v)*ds
+
 
 tol = 1E-14
 def clamped_boundary(x, on_boundary):
@@ -57,13 +60,10 @@ def clamped_boundary(x, on_boundary):
 bc = DirichletBC(V, Constant((0, 0, 0)), clamped_boundary)
 
 K = PETScMatrix()
-M = PETScMatrix()
+F = PETScVector()
 
+assemble_system(a,L_,bc, A_tensor=K, b_tensor=F)
 
-dummy = v[0]*dx
-assemble_system(ak,dummy,bc, A_tensor=K)
-assemble_system(am, dummy,bc ,A_tensor=M)
-bc.zero(M)
 
 dof_spring = []
 for i,(x,y,z) in enumerate(V.tabulate_dof_coordinates()):
@@ -81,31 +81,25 @@ for i in dof_spring:
     K.set([k_new], [i],[i])
     K.apply("add")
 
-
-eigensolver = SLEPcEigenSolver(K,M)
-eigensolver.parameters["spectrum"] = "target magnitude"
-eigensolver.parameters["spectral_transform"] = "shift-and-invert"
-eigensolver.parameters["spectral_shift"] = 0.0
-eigensolver.solve(60)
-
-
-
-neigs = 50
-computed_eigenvalues = []
-for i in range(neigs):
-    r, _ = eigensolver.get_eigenvalue(i) # ignore the imaginary part
-    computed_eigenvalues.append(r**.5/2/pi)
-print(np.sort(np.array(computed_eigenvalues)))
-
-
-xdmffile = XDMFFile('vibration1d-complex-boundary-2.xdmf')
+# Compute solution
 u = Function(V)
-u.rename('u','uuuuu')
-for i in range(20):
-    r, c, rx, cx = eigensolver.get_eigenpair(i)
-    u.vector()[:] = rx
-    xdmffile.write(u, r**.5/2/pi)
-xdmffile.close()
+solve(K,u.vector(),F)
 
 
+V = FunctionSpace(mesh, 'P', 1)
+
+# Compute magnitude of displacement
+u_magnitude = sqrt(dot(u, u))
+u_magnitude = project(u_magnitude, V)
+# plot(u_magnitude, 'Displacement magnitude')
+print('min/max u:',
+      u_magnitude.vector().min(),
+      u_magnitude.vector().max())
+
+# Save solution to file in VTK format
+File('displacement-complex-boundary-2.pvd') << u
+File('magnitude-complex-boundary-2.pvd') << u_magnitude
+
+## Hold plot
+#interactive()
 
