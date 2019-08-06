@@ -83,7 +83,7 @@ for i in dof_spring:
 
 # Compute solution
 u = Function(V)
-solve(K,u.vector(),F)
+solve(K,u.vector(),F, 'cg')
 
 
 V = FunctionSpace(mesh, 'P', 1)
